@@ -17,4 +17,4 @@ services:
       - logstash
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml
-      - ./obj/logs:/var/log/elk-herder
+      - ./logs:/var/log/elk-herder
