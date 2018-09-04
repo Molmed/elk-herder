@@ -1,0 +1,11 @@
+obj/
+.idea/
+tmp/
+*.pyc
+
+dist/
+build/
+*.egg-info/
+
+.tox/
+.coverage

@@ -1,0 +1,20 @@
+version: "3"
+services:
+  logstash:
+    image: docker.elastic.co/logstash/logstash:6.3.2
+    entrypoint: bin/logstash --path.settings /usr/share/logstash/config/elk-herder -f /usr/share/logstash/pipeline/elk-herder/logstash.conf --config.reload.automatic
+    container_name: logstash
+    environment:
+      - discovery.type=single-node
+    volumes:
+      - .:/usr/share/logstash/config/elk-herder
+      - .:/usr/share/logstash/pipeline/elk-herder
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:6.3.2
+    entrypoint: ./filebeat -e -c filebeat.yml -d "publish"
+    container_name: filebeat
+    depends_on:
+      - logstash
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - ./obj/logs:/var/log/elk-herder
