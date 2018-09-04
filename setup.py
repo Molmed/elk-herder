@@ -3,7 +3,7 @@ Create logstash configuration
 """
 from setuptools import find_packages, setup
 
-dependencies = ['click', 'pyyaml']
+dependencies = ['click', 'pyyaml', 'jinja2', 'watchdog']
 
 setup(
     name='elk_herder',

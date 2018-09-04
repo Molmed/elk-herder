@@ -1,0 +1,12 @@
+input {
+    beats {
+        port => "5044"
+    }
+}
+filter {
+  {{ grok }}
+}
+output {
+    stdout { codec => rubydebug }
+}
+

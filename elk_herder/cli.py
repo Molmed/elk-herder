@@ -8,6 +8,8 @@ import subprocess
 import shutil
 import re
 import time
+from jinja2 import Environment, PackageLoader
+from watchdog.observers import Observer
 
 
 @click.group()
@@ -15,7 +17,7 @@ def main():
     pass
 
 
-def parse_config_file(f):
+def parse_config_file(path):
     """
     The config file is expected to start with a YAML section which ends with three hashtags (###).
     This section contains metadata for the file being parsed.
@@ -30,17 +32,18 @@ def parse_config_file(f):
     Each line that starts with grok defines the grok pattern that the next non-empty lines should match.
 
     """
-    yaml_section = list(takewhile(lambda line: not line.startswith("###"), f))
-    metadata = yaml.load("".join(yaml_section))
-    metadata["filename"] = f.name
-    examples = list()
-    # We split the examples on an empty line using groupby (groupby splits everytime the key function changes)
-    for k, g in groupby(f, lambda x: x.strip() == ""):
-        if not k:
-            # Append if the key function returned false, i.e. we're in an example section
-            examples.append(list(g))
-    metadata["examples"] = examples
-    return metadata
+    with open(path) as fs:
+        yaml_section = list(takewhile(lambda line: not line.startswith("###"), fs))
+        metadata = yaml.load("".join(yaml_section))
+        metadata["filename"] = fs.name
+        examples = list()
+        # We split the examples on an empty line using groupby (groupby splits everytime the key function changes)
+        for k, g in groupby(fs, lambda x: x.strip() == ""):
+            if not k:
+                # Append if the key function returned false, i.e. we're in an example section
+                examples.append(list(g))
+        metadata["examples"] = examples
+        return metadata
 
 @main.command()
 def run():
@@ -68,44 +71,106 @@ def replace_timestamp(find, replace, str):
     replace = time.strftime(replace)
     return re.sub(find, replace, str)
 
+
+def test_config(config, index, fresh_timestamps):
+    obj_path = Path("./obj")
+
+    # For each config file, generate the required configuration files for both filebeat and logstash
+
+    # 1. Update pipeline configuration:
+
+    # Build a new logstash.conf file and replace it if it has changed:
+    if len(config["groks"]) != 1:
+        raise NotImplementedError("TEMPORARY grok not exactly one")
+    grok = config["groks"][0]
+    grok_section = 'match => { "message" => "' + grok + '" }'
+    grok_section = "\n".join(["grok {", grok_section, "}"])
+
+    env = Environment(loader=PackageLoader('elk_herder', 'resources'))
+    template = env.get_template('logstash.conf.j2')
+    logstash_conf_path = obj_path.joinpath("logstash.conf")
+    logstash_conf_new_content = template.render(grok=grok_section)
+    logstash_conf_old_content = logstash_conf_path.read_text("utf-8")
+
+    if logstash_conf_old_content != logstash_conf_new_content:
+        logstash_conf_path.write_text(logstash_conf_new_content, "utf-8")
+
+    # 2. Write logs:
+    print("Writing log example log entries to filebeat-watches-me.log...")
+    log_file_path = Path("obj/logs/filebeat-watches-me.log")
+
+    examples = config["examples"]
+    # Use nothing but the indexed example if specified
+    if index != -1:
+        examples = [examples[index]]
+    # Flatten the examples
+    log_lines = [item for sublist in examples for item in sublist]
+
+    # 2. Apply mutations:
+    log_lines_mutated = list()
+
+    for line in log_lines:
+        mutated = line
+        # Apply fresh timestamps if applicable
+        if "timestamp" in config and fresh_timestamps:
+            timestamp = config["timestamp"]
+            find = timestamp["find"]
+            replace = timestamp["replace"]
+            mutated = replace_timestamp(find, replace, line)
+        log_lines_mutated.append(mutated)
+    output = "".join(log_lines_mutated)
+
+    # First truncate
+    with log_file_path.open("a+") as fs:
+        fs.write(output)
+
+from watchdog.events import FileSystemEventHandler
+class Handler(FileSystemEventHandler):
+    def __init__(self, path, index, fresh_timestamps):
+        self.file_name = os.path.basename(path)
+        self.path = path
+        self.last_time = 0
+        self.index = index
+        self.fresh_timestamps = fresh_timestamps
+
+    def handle(self):
+        config = parse_config_file(self.path)
+        test_config(config, self.index, self.fresh_timestamps)
+
+
+    def on_modified(self, event):
+        import time
+        current_time = time.time()
+        delta = current_time - self.last_time
+        if os.path.basename(event.src_path) == self.file_name:
+            if delta >= 1:
+                self.handle()
+                self.last_time = current_time
+            else:
+                print("TOO SHORT")
+
 @main.command()
-@click.argument("files", nargs=-1, type=click.File('r'))
+@click.argument("file")
 @click.option("--index", default=-1)
+@click.option("--follow/--no-follow", default=False)
 @click.option("--fresh-timestamps/--no-fresh-timestamps", default=True)
-def test(files, index, fresh_timestamps):
-    for f in files:
-        config = parse_config_file(f)
+def test(file, index, fresh_timestamps, follow):
+    handler = Handler(file, index, fresh_timestamps)
 
-        # For each config file, generate the required configuration files for both filebeat and logstash
-
-        # 1. Write logs:
-        print("Writing log example log entries to filebeat-watches-me.log...")
-        log_file_path = Path("obj/logs/filebeat-watches-me.log")
-
-        examples = config["examples"]
-        # Use nothing but the indexed example if specified
-        if index != -1:
-            examples = [examples[index]]
-        # Flatten the examples
-        log_lines = [item for sublist in examples for item in sublist]
-
-        # 2. Apply mutations:
-        log_lines_mutated = list()
-
-        for line in log_lines:
-            mutated = line
-            # Apply fresh timestamps if applicable
-            if "timestamp" in config and fresh_timestamps:
-                timestamp = config["timestamp"]
-                find = timestamp["find"]
-                replace = timestamp["replace"]
-                mutated = replace_timestamp(find, replace, line)
-            log_lines_mutated.append(mutated)
-        output = "".join(log_lines_mutated)
-
-        # First truncate
-        with log_file_path.open("a+") as fs:
-            fs.write(output)
+    if follow:
+        directory = os.path.dirname(file)
+        observer = Observer()
+        observer.schedule(handler, directory)
+        observer.start()
+        print(f"Observing {directory}")
+        try:
+            while True:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
+    else:
+        handler.handle()
 
 
 @main.command()
