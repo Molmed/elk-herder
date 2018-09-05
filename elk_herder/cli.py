@@ -10,6 +10,7 @@ import re
 import time
 from jinja2 import Environment, PackageLoader
 from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 
 @click.group()
@@ -72,7 +73,7 @@ def replace_timestamp(find, replace, str):
     return re.sub(find, replace, str)
 
 
-def test_config(config, index, fresh_timestamps):
+def test_config(config, index, fresh_timestamps, truncate_logs):
     obj_path = Path("./obj")
 
     # For each config file, generate the required configuration files for both filebeat and logstash
@@ -120,11 +121,10 @@ def test_config(config, index, fresh_timestamps):
         log_lines_mutated.append(mutated)
     output = "".join(log_lines_mutated)
 
-    # First truncate
-    with log_file_path.open("a+") as fs:
+    mode = "a+" if not truncate_logs else "w"
+    with log_file_path.open(mode) as fs:
         fs.write(output)
 
-from watchdog.events import FileSystemEventHandler
 class Handler(FileSystemEventHandler):
     def __init__(self, path, index, fresh_timestamps):
         self.file_name = os.path.basename(path)
@@ -133,21 +133,19 @@ class Handler(FileSystemEventHandler):
         self.index = index
         self.fresh_timestamps = fresh_timestamps
 
-    def handle(self):
+    def handle(self, truncate_logs=False):
         config = parse_config_file(self.path)
-        test_config(config, self.index, self.fresh_timestamps)
-
+        test_config(config, self.index, self.fresh_timestamps, truncate_logs)
 
     def on_modified(self, event):
         import time
         current_time = time.time()
         delta = current_time - self.last_time
         if os.path.basename(event.src_path) == self.file_name:
-            if delta >= 1:
+            if delta >= 0.5:
                 self.handle()
                 self.last_time = current_time
-            else:
-                print("TOO SHORT")
+
 
 @main.command()
 @click.argument("file")
@@ -158,6 +156,9 @@ def test(file, index, fresh_timestamps, follow):
     handler = Handler(file, index, fresh_timestamps)
 
     if follow:
+        # Handle the event once, then handle on each file change
+        handler.handle()
+
         directory = os.path.dirname(file)
         observer = Observer()
         observer.schedule(handler, directory)
