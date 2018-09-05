@@ -11,7 +11,7 @@ services:
       - .:/usr/share/logstash/pipeline/elk-herder
   filebeat:
     image: docker.elastic.co/beats/filebeat:6.3.2
-    entrypoint: ./filebeat -e -c filebeat.yml -d "publish"
+    entrypoint: ./filebeat -strict.perms=false -e -c filebeat.yml -d "publish"
     container_name: filebeat
     depends_on:
       - logstash
