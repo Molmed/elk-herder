@@ -1,9 +1,0 @@
-filebeat.prospectors:
-- type: log
-  paths:
-    - /var/log/elk-herder/filebeat-watches-me.log
-output.logstash:
-  hosts: ["logstash:5044"]
-queue.mem:
-   flush.min_events: 0
-   flush.timeout: 0s

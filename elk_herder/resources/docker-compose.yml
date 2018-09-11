@@ -3,7 +3,7 @@ services:
   logstash:
     image: docker.elastic.co/logstash/logstash:6.3.2
     entrypoint: bin/logstash --path.settings /usr/share/logstash/config/elk-herder -f /usr/share/logstash/pipeline/elk-herder/logstash.conf --config.reload.automatic
-    container_name: logstash
+    container_name: elk_herder_logstash
     environment:
       - discovery.type=single-node
     volumes:
@@ -11,10 +11,13 @@ services:
       - .:/usr/share/logstash/pipeline/elk-herder
   filebeat:
     image: docker.elastic.co/beats/filebeat:6.3.2
-    entrypoint: ./filebeat -e -c filebeat.yml -d "publish"
-    container_name: filebeat
+    entrypoint: ./filebeat -e -c /usr/share/filebeat/filebeat.yml -d "publish"
+    container_name: elk_herder_filebeat
     depends_on:
       - logstash
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml
       - ./logs:/var/log/elk-herder
+      - ./prospectors.d:/usr/share/filebeat/prospectors.d
+
+# TODO: Replace prospectors with inputs

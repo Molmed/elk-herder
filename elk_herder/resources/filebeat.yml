@@ -1,9 +1,11 @@
-filebeat.prospectors:
-- type: log
-  paths:
-    - /var/log/elk-herder/filebeat-watches-me.log
+# Basic filebeat configuration. Prospectors are in prospectors.d
 output.logstash:
   hosts: ["logstash:5044"]
 queue.mem:
    flush.min_events: 0
    flush.timeout: 0s
+filebeat.config.inputs:
+  enabled: true
+  path: /usr/share/filebeat/prospectors.d/*.yml
+  reload.enabled: true
+  reload.period: 2s
