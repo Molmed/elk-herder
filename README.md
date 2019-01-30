@@ -20,15 +20,13 @@ elk-herder knows how to parse this file into both translate these into separate 
 
 # Setup:
 
-Install the Python tool `elk-herder` in py3, e.g. (with conda):
+Install the Python tool `elk-herder` in your py3 environment:
 
-    conda create -q --name elk-herder python=3
-    source activate elk-herder
     pip install -e elk-herder
 
 # Developing groks and other config
 
-Start by executing the docker environment.
+Start by executing the docker environment. From the 'elk-herder' directory run:
 
     elk-herder run
 
@@ -47,6 +45,22 @@ Now (in a third terminal) try to open `./examples/pythonapp.log.config` in a tex
 Finally, try to change the grok. This will take a bit longer, since logstash will restart.
 
 Note that groks can be tested much faster, but this tool provides an integration test for the whole process, where you can change (eventually) other aspects too.
+
+## Advanced configuration
+
+In the common use case, each entry in your 'groks' array maps to a 'match' entry in the resulting logstash configuration. 
+
+However, you may need advanced configuration, such as conditionals directing when the different groks should be used. In this case, you can replace the 'groks' key with a custom 'filter' entry, e.g.:
+
+    description:
+    paths: <list of path globs>
+    filter: 'if [message] =~ /myregex/ {
+      grok {
+          match => {
+            "message" => "foo=%{DATA:bar}"
+          }
+      }'
+    ...
 
 
 # Ensuring all logs are parsed correctly in production
