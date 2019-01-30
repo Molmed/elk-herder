@@ -80,17 +80,31 @@ def test_config(config, index, fresh_timestamps, truncate_logs):
 
     # 1. Update pipeline configuration:
 
-    # Build a new logstash.conf file and replace it if it has changed:
-    if len(config["groks"]) != 1:
-        raise NotImplementedError("TEMPORARY grok not exactly one")
-    grok = config["groks"][0]
-    grok_section = 'match => { "message" => "' + grok + '" }'
-    grok_section = "\n".join(["grok {", grok_section, "}"])
+    # Build a new logstash.conf file and replace it if it has changed.
+    # Either a 'groks' or 'filter' entry is required.
+    # TODO: add support for multiple groks
+    has_grok = "groks" in config and len(config["groks"]) == 1
+    has_filter = "filter" in config
 
+    if not has_grok and not has_filter:
+        raise NotImplementedError("TEMPORARY Only one 'grok' or 'filter' entry allowed")
+
+    filter_section = ''
+
+    if has_filter:
+        filter_section = config["filter"]
+
+    if has_grok:
+        # TODO: add support for multiple groks
+        grok = config["groks"][0]
+        grok_section = 'match => { "message" => "' + grok + '" }'
+        filter_section = "\n".join(["grok {", grok_section, "}"])
+
+    filter_section = 'filter {' + filter_section + '}'
     env = Environment(loader=PackageLoader('elk_herder', 'resources'))
     template = env.get_template('logstash.conf.j2')
     logstash_conf_path = obj_path.joinpath("logstash.conf")
-    logstash_conf_new_content = template.render(grok=grok_section)
+    logstash_conf_new_content = template.render(filter=filter_section)
     logstash_conf_old_content = logstash_conf_path.read_text("utf-8")
 
     if logstash_conf_old_content != logstash_conf_new_content:
