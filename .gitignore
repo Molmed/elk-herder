@@ -2,6 +2,7 @@ obj/
 .idea/
 tmp/
 *.pyc
+*~
 
 dist/
 build/
