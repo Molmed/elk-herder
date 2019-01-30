@@ -75,4 +75,5 @@ When you encounter such a log, you can add it to the configuration file for the 
 
 * The tool should be able to compare the output of logstash to expected outputs.
 * The interactive test mode should have more user friendly output
+* Allow dynamic configuration for filebeat.yml
 
